@@ -55,3 +55,25 @@ export async function createImageUploadUrl(params: { filename: string; contentTy
     publicUrl: buildPublicAssetUrl(key)
   };
 }
+
+export async function uploadImageBuffer(params: {
+  filename: string;
+  contentType: string;
+  body: Buffer | Uint8Array;
+}) {
+  const key = buildObjectKey(params.filename);
+
+  await client.send(
+    new PutObjectCommand({
+      Bucket: env.S3_BUCKET,
+      Key: key,
+      ContentType: params.contentType,
+      Body: params.body
+    })
+  );
+
+  return {
+    key,
+    publicUrl: buildPublicAssetUrl(key)
+  };
+}

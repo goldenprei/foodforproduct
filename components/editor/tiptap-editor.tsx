@@ -10,9 +10,10 @@ type Props = {
   initialContent: Record<string, unknown>;
   onChange: (content: Record<string, unknown>) => void;
   onUploadImage: (file: File) => Promise<string>;
+  isUploadingImage?: boolean;
 };
 
-export function TiptapEditor({ initialContent, onChange, onUploadImage }: Props) {
+export function TiptapEditor({ initialContent, onChange, onUploadImage, isUploadingImage = false }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const editor = useEditor({
@@ -136,8 +137,8 @@ export function TiptapEditor({ initialContent, onChange, onUploadImage }: Props)
         >
           Link
         </button>
-        <button onClick={() => fileInputRef.current?.click()} type="button">
-          Image
+        <button onClick={() => fileInputRef.current?.click()} type="button" disabled={isUploadingImage}>
+          {isUploadingImage ? "Uploading..." : "Image"}
         </button>
         <button
           onClick={() => editor.chain().focus().insertContent("$x^2 + y^2$").run()}
@@ -171,6 +172,9 @@ export function TiptapEditor({ initialContent, onChange, onUploadImage }: Props)
           }
           try {
             await handleImageFile(file);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Image upload failed";
+            window.alert(message);
           } finally {
             event.target.value = "";
           }

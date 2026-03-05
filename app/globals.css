@@ -270,6 +270,22 @@ label {
   gap: 0.8rem;
 }
 
+.text-link-button {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--brand-2);
+  font-family: var(--font-heading), sans-serif;
+  font-size: 0.82rem;
+  margin-top: 0.4rem;
+  padding: 0;
+  text-align: left;
+}
+
+.text-link-button:hover {
+  text-decoration: underline;
+}
+
 .split {
   display: grid;
   gap: 1rem;

@@ -61,10 +61,14 @@ function parseTags(tagInput: string): string[] {
 export function ArticleEditorForm({ article, categories }: Props) {
   const [isPending, startTransition] = useTransition();
 
+  const categoryNames = useMemo(() => categories.map((item) => item.name), [categories]);
+  const startsInExistingCategory = categoryNames.includes(article.category.name);
+
   const [title, setTitle] = useState(article.title);
   const [slug, setSlug] = useState(article.slug);
   const [excerpt, setExcerpt] = useState(article.excerpt ?? "");
-  const [category, setCategory] = useState(article.category.name);
+  const [category, setCategory] = useState(article.category.name || categoryNames[0] || "General");
+  const [isCreatingCategory, setIsCreatingCategory] = useState(!startsInExistingCategory);
   const [tags, setTags] = useState(article.articleTags.map((item) => item.tag.name).join(", "));
   const [coverImageUrl, setCoverImageUrl] = useState(article.coverImageUrl ?? "");
   const [publishAt, setPublishAt] = useState(toDateTimeInputValue(article.publishAt));
@@ -72,41 +76,57 @@ export function ArticleEditorForm({ article, categories }: Props) {
   const [status, setStatus] = useState<"DRAFT" | "PUBLISHED">(article.status);
   const [info, setInfo] = useState<string>("");
   const [slugTouched, setSlugTouched] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
-  const categorySuggestions = useMemo(() => categories.map((item) => item.name), [categories]);
+  function useExistingCategoryMode() {
+    setIsCreatingCategory(false);
+    if (!categoryNames.includes(category)) {
+      setCategory(categoryNames[0] || "General");
+    }
+  }
+
+  function useNewCategoryMode() {
+    setIsCreatingCategory(true);
+    if (categoryNames.includes(category)) {
+      setCategory("");
+    }
+  }
 
   async function uploadImage(file: File): Promise<string> {
-    const signed = await fetch("/api/v1/admin/media/upload-url", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        filename: file.name,
-        contentType: file.type,
-        size: file.size
-      })
-    });
+    setIsUploadingImage(true);
+    setInfo(`Uploading image: ${file.name}`);
 
-    const signedPayload = await signed.json();
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
 
-    if (!signed.ok) {
-      throw new Error(signedPayload?.error?.message || "Could not create upload URL");
+      const response = await fetch("/api/v1/admin/media/upload", {
+        method: "POST",
+        body: formData
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        url?: string;
+        error?: { message?: string };
+      };
+
+      if (!response.ok) {
+        throw new Error(payload?.error?.message || "Image upload failed");
+      }
+
+      if (!payload.url) {
+        throw new Error("Image upload succeeded but no URL was returned");
+      }
+
+      setInfo(`Image uploaded: ${file.name}`);
+      return payload.url;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Image upload failed";
+      setInfo(message);
+      throw error;
+    } finally {
+      setIsUploadingImage(false);
     }
-
-    const uploadResponse = await fetch(signedPayload.uploadUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": file.type
-      },
-      body: file
-    });
-
-    if (!uploadResponse.ok) {
-      throw new Error("Image upload failed");
-    }
-
-    return signedPayload.publicUrl;
   }
 
   async function saveDraft() {
@@ -120,7 +140,7 @@ export function ArticleEditorForm({ article, categories }: Props) {
         slug,
         excerpt,
         contentJson,
-        category,
+        category: category.trim() || "General",
         tags: parseTags(tags),
         coverImageUrl
       })
@@ -212,14 +232,14 @@ export function ArticleEditorForm({ article, categories }: Props) {
           <h1 style={{ margin: 0, fontFamily: "var(--font-heading)" }}>Edit article</h1>
           <div className="meta-row">
             <span className="chip">{status}</span>
-            <button onClick={saveOnly} type="button" disabled={isPending}>
+            <button onClick={saveOnly} type="button" disabled={isPending || isUploadingImage}>
               Save draft
             </button>
-            <button onClick={publish} type="button" disabled={isPending}>
+            <button onClick={publish} type="button" disabled={isPending || isUploadingImage}>
               Publish
             </button>
             {status === "PUBLISHED" ? (
-              <button className="secondary" onClick={unpublish} type="button" disabled={isPending}>
+              <button className="secondary" onClick={unpublish} type="button" disabled={isPending || isUploadingImage}>
                 Unpublish
               </button>
             ) : null}
@@ -278,17 +298,34 @@ export function ArticleEditorForm({ article, categories }: Props) {
           <div className="stack">
             <div>
               <label htmlFor="category">Category</label>
-              <input
-                id="category"
-                list="categories-list"
-                onChange={(event) => setCategory(event.target.value)}
-                value={category}
-              />
-              <datalist id="categories-list">
-                {categorySuggestions.map((name) => (
-                  <option value={name} key={name} />
-                ))}
-              </datalist>
+              {!isCreatingCategory && categoryNames.length ? (
+                <>
+                  <select id="category" onChange={(event) => setCategory(event.target.value)} value={category}>
+                    {categoryNames.map((name) => (
+                      <option value={name} key={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                  <button className="text-link-button" onClick={useNewCategoryMode} type="button">
+                    New category
+                  </button>
+                </>
+              ) : (
+                <>
+                  <input
+                    id="category"
+                    onChange={(event) => setCategory(event.target.value)}
+                    placeholder="Type a new category name"
+                    value={category}
+                  />
+                  {categoryNames.length ? (
+                    <button className="text-link-button" onClick={useExistingCategoryMode} type="button">
+                      Use existing category
+                    </button>
+                  ) : null}
+                </>
+              )}
             </div>
             <div>
               <label htmlFor="tags">Tags (comma-separated)</label>
@@ -321,6 +358,7 @@ export function ArticleEditorForm({ article, categories }: Props) {
           initialContent={article.contentJson}
           onChange={(nextJson) => setContentJson(nextJson)}
           onUploadImage={uploadImage}
+          isUploadingImage={isUploadingImage}
         />
       </section>
 
