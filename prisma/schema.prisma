@@ -1,0 +1,153 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+}
+
+enum ArticleStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model User {
+  id            String            @id @default(cuid())
+  name          String?
+  email         String?           @unique
+  emailVerified DateTime?
+  image         String?
+  role          UserRole          @default(OWNER)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  accounts      Account[]
+  sessions      Session[]
+  revisions     ArticleRevision[]
+  mediaAssets   MediaAsset[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  slug      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  articles  Article[]
+}
+
+model Tag {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  slug        String       @unique
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  articleTags ArticleTag[]
+}
+
+model Article {
+  id               String            @id @default(cuid())
+  slug             String            @unique
+  title            String
+  excerpt          String?
+  contentJson      Json
+  contentHtml      String?
+  contentText      String?
+  status           ArticleStatus     @default(DRAFT)
+  publishAt        DateTime?
+  firstPublishedAt DateTime?
+  coverImageUrl    String?
+  categoryId       String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  category         Category          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  articleTags      ArticleTag[]
+  revisions        ArticleRevision[]
+  imports          ImportSource[]
+
+  @@index([status, publishAt])
+  @@index([categoryId])
+}
+
+model ArticleTag {
+  articleId String
+  tagId     String
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, tagId])
+}
+
+model ArticleRevision {
+  id        String   @id @default(cuid())
+  articleId String
+  snapshot  Json
+  createdAt DateTime @default(now())
+  savedById String?
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  savedBy   User?    @relation(fields: [savedById], references: [id], onDelete: SetNull)
+
+  @@index([articleId, createdAt])
+}
+
+model MediaAsset {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  url         String
+  mimeType    String
+  size        Int?
+  createdAt   DateTime @default(now())
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+}
+
+model ImportSource {
+  id         String   @id @default(cuid())
+  filePath   String   @unique
+  checksum   String
+  sourceType String
+  articleId  String
+  importedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  article    Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId])
+}
