@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import PDFDocument from "pdfkit";
 
 import { formatPublishDate } from "@/lib/format";
@@ -23,6 +26,25 @@ type PdfLine = {
   style: "paragraph" | "heading1" | "heading2" | "heading3" | "list" | "code" | "blockquote";
   indent?: number;
 };
+
+const PDF_FONT_PATH = path.join(
+  process.cwd(),
+  "node_modules",
+  "next",
+  "dist",
+  "compiled",
+  "@vercel",
+  "og",
+  "noto-sans-v27-latin-regular.ttf"
+);
+
+function resolvePdfFontPath() {
+  if (fs.existsSync(PDF_FONT_PATH)) {
+    return PDF_FONT_PATH;
+  }
+
+  throw new Error(`PDF font file is missing at ${PDF_FONT_PATH}`);
+}
 
 function asDocNode(value: unknown): DocNode {
   if (!value || typeof value !== "object") {
@@ -160,23 +182,26 @@ function contentToLines(contentJson: Record<string, unknown>): PdfLine[] {
 
 export async function buildArticlePdfBuffer(article: PrintableArticle): Promise<Buffer> {
   const lines = contentToLines(article.contentJson);
+  const fontPath = resolvePdfFontPath();
 
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     const doc = new PDFDocument({
       size: "A4",
-      margin: 50
+      margin: 50,
+      // Avoid pdfkit default "Helvetica" load, which requires AFM files in server chunks.
+      font: ""
     });
 
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));
     doc.on("error", reject);
     doc.on("end", () => resolve(Buffer.concat(chunks)));
 
-    doc.font("Helvetica-Bold").fontSize(26).text(article.title);
+    doc.font(fontPath).fontSize(26).text(article.title);
     doc.moveDown(0.4);
 
     doc
-      .font("Helvetica")
+      .font(fontPath)
       .fontSize(11)
       .fillColor("#4f5a4d")
       .text(`${article.category.name} | ${formatPublishDate(article.publishAt)}`);
@@ -184,7 +209,7 @@ export async function buildArticlePdfBuffer(article: PrintableArticle): Promise<
     if (article.tags.length) {
       doc
         .moveDown(0.3)
-        .font("Helvetica")
+        .font(fontPath)
         .fontSize(10)
         .fillColor("#4f5a4d")
         .text(article.tags.map((tag) => `#${tag.name}`).join("  "));
@@ -193,7 +218,7 @@ export async function buildArticlePdfBuffer(article: PrintableArticle): Promise<
     if (article.excerpt) {
       doc
         .moveDown(0.7)
-        .font("Helvetica-Oblique")
+        .font(fontPath)
         .fontSize(13)
         .fillColor("#1f281f")
         .text(article.excerpt);
@@ -206,30 +231,30 @@ export async function buildArticlePdfBuffer(article: PrintableArticle): Promise<
 
       switch (line.style) {
         case "heading1":
-          doc.moveDown(0.8).font("Helvetica-Bold").fontSize(20).fillColor("#1f281f").text(`${prefix}${line.text}`);
+          doc.moveDown(0.8).font(fontPath).fontSize(20).fillColor("#1f281f").text(`${prefix}${line.text}`);
           break;
         case "heading2":
-          doc.moveDown(0.7).font("Helvetica-Bold").fontSize(17).fillColor("#1f281f").text(`${prefix}${line.text}`);
+          doc.moveDown(0.7).font(fontPath).fontSize(17).fillColor("#1f281f").text(`${prefix}${line.text}`);
           break;
         case "heading3":
-          doc.moveDown(0.6).font("Helvetica-Bold").fontSize(15).fillColor("#1f281f").text(`${prefix}${line.text}`);
+          doc.moveDown(0.6).font(fontPath).fontSize(15).fillColor("#1f281f").text(`${prefix}${line.text}`);
           break;
         case "list":
-          doc.moveDown(0.2).font("Helvetica").fontSize(12).fillColor("#1f281f").text(`${prefix}${line.text}`);
+          doc.moveDown(0.2).font(fontPath).fontSize(12).fillColor("#1f281f").text(`${prefix}${line.text}`);
           break;
         case "code":
-          doc.moveDown(0.4).font("Courier").fontSize(11).fillColor("#1f281f").text(`${prefix}${line.text}`);
+          doc.moveDown(0.4).font(fontPath).fontSize(11).fillColor("#1f281f").text(`${prefix}${line.text}`);
           break;
         case "blockquote":
           doc
             .moveDown(0.3)
-            .font("Helvetica-Oblique")
+            .font(fontPath)
             .fontSize(12)
             .fillColor("#364335")
             .text(`${prefix}${line.text}`);
           break;
         default:
-          doc.moveDown(0.25).font("Helvetica").fontSize(12).fillColor("#1f281f").text(`${prefix}${line.text}`);
+          doc.moveDown(0.25).font(fontPath).fontSize(12).fillColor("#1f281f").text(`${prefix}${line.text}`);
       }
     }
 
